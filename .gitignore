@@ -3,6 +3,54 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# OS & IDE
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.log
+*.tmp
+.vscode/
+.idea/
+
+# Node.js (Salesforce CLI, LWC)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Salesforce CLI
+.sfdx/
+.localdevserver/
+*.log
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# AWS CloudFormation
+# (*.yaml)
+*.bak
+*.backup
+*.out
+
+#Docker
+*.pid
+*.seed
+*.tar
+*.gz
+
+# Kubernetes
+# (залишаємо *.yaml, бо це важливе)
+*.kube/config
+
 # C extensions
 *.so
 
