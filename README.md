@@ -1,6 +1,6 @@
 # SaaS Cloud DevOps
 
-![CI/CD Status](https://github.com/ShamansIT/SaaS_Cloud_DevOps/actions/workflows/deploy.yml/badge.svg)
+![Bootstrap CI/CD Status](https://github.com/ShamansIT/SaaS_Cloud_DevOps/actions/workflows/bootstrap.yml/badge.svg)
 
 This repository provides **production-grade multi-stack DevOps implementation** integrating:
 - **AWS Serverless architecture** (Lambda, API Gateway, CloudFormation)
@@ -12,4 +12,8 @@ The goal of this project is to establish a **scalable, secure, and maintainable 
 ---
 
 ## Project Overview
-### Phase A — Core Implementation
+### Phase 01 - Core Implementation
+
+**Foundation source** – [AWS CloudFormation template of a sample API with basic request validation](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-request-validation-sample-cloudformation.html).
+
+

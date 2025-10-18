@@ -53,8 +53,8 @@ jobs:
       # Deploy placeholder
       - name: Staging placeholder
         if: github.ref == 'refs/heads/dev'
-        run: echo "Staging placeholder TODO:(add deploy-to-dev here later)"
+        run: echo "Staging placeholder TODO:(add deploy-to-dev)"
 
       - name: Production placeholder
         if: github.ref == 'refs/heads/main'
-        run: echo "Production placeholder TODO:(add deploy-to-prod here later)"
+        run: echo "Production placeholder TODO:(add deploy-to-prod)"
