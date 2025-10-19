@@ -1,0 +1,145 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+  AWS CloudFormation Template to create an API Gateway REST API with request validation for GET and POST methods.
+
+  The GET method validates query string parameters only, while the POST method validates the request body against a defined JSON schema model.
+
+  This template creates:
+    - An API Gateway REST API
+    - Two request models for validation
+    - Two request validators (one for GET and one for POST)
+    - A resource with GET and POST methods that use the validators
+    - An API deployment to a specified stage
+
+Parameters:
+  StageName:
+    Type: String
+    Default: v1
+    Description: Name of API stage.
+
+Resources:
+  # Create API Gateway REST API
+  Api:
+    Type: 'AWS::ApiGateway::RestApi'
+    Properties:
+      Name: ReqValidatorsSample
+  
+  # Create Models for Request Validation
+  RequestBodyModelId:
+    Type: 'AWS::ApiGateway::Model'
+    Properties:
+      RestApiId: !Ref Api
+      ContentType: application/json
+      Description: Request body model for Pet ID.
+      Schema:
+        $schema: 'http://json-schema.org/draft-04/schema#'
+        title: RequestBodyModelId
+        properties:
+            id:
+              type: integer
+
+  # Create Request Body Model for POST method validation
+  RequestBodyModel: 
+    Type: 'AWS::ApiGateway::Model'
+    Properties:
+      RestApiId: !Ref Api
+      ContentType: application/json
+      Description: Request body model for Pet type, name, price, and ID.
+      Schema:
+        $schema: 'http://json-schema.org/draft-04/schema#'
+        title: RequestBodyModel
+        required:
+          - price
+          - name
+          - type
+        type: object
+        properties:
+            id:
+              "$ref": !Sub 
+                - 'https://apigateway.amazonaws.com/restapis/${Api}/models/${RequestBodyModelId}'
+                - Api: !Ref Api
+                  RequestBodyModelId: !Ref RequestBodyModelId
+            price: 
+              type: number
+              minimum: 25
+              maximum: 500
+            name:
+              type: string
+            type:
+              type: string
+              enum:
+                - "dog"
+                - "cat"
+                - "fish"
+
+  # Create Request Validators
+  GETValidator:
+    Type: AWS::ApiGateway::RequestValidator
+    Properties:
+      Name: params-only
+      RestApiId: !Ref Api
+      ValidateRequestBody: False
+      ValidateRequestParameters: True 
+
+  # Create Request Validator for POST method    
+  POSTValidator:
+    Type: AWS::ApiGateway::RequestValidator
+    Properties:
+      Name: body-only
+      RestApiId: !Ref Api
+      ValidateRequestBody: True
+      ValidateRequestParameters: False
+
+  # Create Resource and Methods with Request Validation
+  ValidationResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref Api
+      ParentId: !GetAtt Api.RootResourceId
+      PathPart: 'validation'
+  ValidationMethodGet:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref Api
+      ResourceId: !Ref ValidationResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      RequestValidatorId: !Ref GETValidator
+      RequestParameters:
+        method.request.querystring.q1: true
+      Integration:
+        Type: HTTP_PROXY
+        IntegrationHttpMethod: GET
+        Uri: http://petstore-demo-endpoint.execute-api.com/petstore/pets/
+
+  # Create POST Method with Request Body Validation
+  ValidationMethodPost:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref Api
+      ResourceId: !Ref ValidationResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      RequestValidatorId: !Ref POSTValidator
+      RequestModels:
+        application/json : !Ref RequestBodyModel 
+      Integration:
+        Type: HTTP_PROXY
+        IntegrationHttpMethod: POST
+        Uri: http://petstore-demo-endpoint.execute-api.com/petstore/pets/
+  
+  # Create API Deployment
+  ApiDeployment:
+    Type: 'AWS::ApiGateway::Deployment'
+    DependsOn:
+      - ValidationMethodGet
+      - RequestBodyModel 
+    Properties:
+      RestApiId: !Ref Api
+      StageName: !Sub '${StageName}'
+      
+Outputs:
+  ApiRootUrl:
+    Description: Root Url of the API
+    Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.amazonaws.com/${StageName}'
+    
