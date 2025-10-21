@@ -206,3 +206,22 @@ aws cloudformation delete-stack --stack-name tickets-api-a2
 aws cloudformation wait stack-delete-complete --stack-name tickets-api-a2
 ```
 <details><summary>Screenshot – delete stack</summary> <img src="https://github.com/ShamansIT/SaaS_Cloud_DevOps/blob/main/docs/screenshots/phase%2002%20screen20%20-%20delete_stack.jpg?raw=true" width="900" alt="delete ok"> </details>
+
+## Node.js environment configuration
+To align local development with the AWS Lambda runtime, several Node.js adjustments were introduced during Phase 03.
+#### Local dependencies per handler
+Each Lambda function (`getTicket`, `createTicket`) now contains its own **package.json**, **package-lock.json** and `node_modules` folder.  
+This mirrors AWS packaging logic and ensures correct deployment with CloudFormation.
+#### Project configuration (jsconfig.json)
+A jsconfig.json file was added to define a pure Node/Lambda environment and remove DOM type conflicts in VS Code.
+This prevents false event warnings and enables IntelliSense for AWS types.
+
+```json
+{   "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "types": ["node", "aws-lambda"] } }
+```
+### #Outcome
+After restarting the TypeScript server, all module and type reconfigured, no warnings in environment. The project now matches a production-grade Node.js Lambda structure, according with best practices for AWS.
