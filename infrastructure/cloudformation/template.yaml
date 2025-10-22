@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: A2 - Minimal REST /tickets on API Gateway + Lambda
+Description: Minimal REST /tickets on API Gateway + Lambda
 
 Parameters:
   ApiName:
@@ -9,6 +9,9 @@ Parameters:
   StageName:
     Type: String
     Default: v1
+  ApiKeyValue:
+    Type: String
+    Default: dev-key-a3-001-1550da9fdf67
 
 Resources:
   # API (REST)
@@ -17,8 +20,7 @@ Resources:
     Properties:
       Name: !Ref ApiName
       EndpointConfiguration:
-        Types: [EDGE]
-
+        Types: [EDGE]   
   TicketsResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -54,28 +56,66 @@ Resources:
       ValidateRequestBody: true
       ValidateRequestParameters: false
 
-  # Lambda functions (SAM)
+  # GET 
+  GetParamsValidator:
+    Type: AWS::ApiGateway::RequestValidator
+    Properties:
+      Name: params-only
+      RestApiId: !Ref TicketsApi
+      ValidateRequestBody: false
+      ValidateRequestParameters: true
+
+  # Lambdas (SAM)
   GetTicketFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: getTicket-a2
+      FunctionName: getTicket-a3
       Runtime: nodejs20.x
       Handler: index.handler
-      CodeUri: D:\IT\DevOps\SaaS_Cloud_DevOps\src\handlers\getTicket\index.js
-      MemorySize: 128
-      Timeout: 5
-      Description: Returns a list of tickets (demo)
+      CodeUri: ../../src/handlers/getTicket/
+      MemorySize: 256
+      Timeout: 6
+      Tracing: Active
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: tickets-api
+          POWERTOOLS_METRICS_NAMESPACE: Tickets
+          LOG_LEVEL: INFO
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSXRayDaemonWriteAccess
 
   CreateTicketFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: createTicket-a2
+      FunctionName: createTicket-a3
       Runtime: nodejs20.x
       Handler: index.handler
-      CodeUri: D:\IT\DevOps\SaaS_Cloud_DevOps\src\handlers\createTicket\index.js
-      MemorySize: 128
-      Timeout: 5
-      Description: Creates a ticket (demo)
+      CodeUri: ../../src/handlers/createTicket/
+      MemorySize: 256
+      Timeout: 6
+      Tracing: Active
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: tickets-api
+          POWERTOOLS_METRICS_NAMESPACE: Tickets
+          LOG_LEVEL: INFO
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSXRayDaemonWriteAccess
+
+  # Log retention
+  GetLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetTicketFunction}
+      RetentionInDays: 14
+
+  CreateLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CreateTicketFunction}
+      RetentionInDays: 14
 
   # Methods on /tickets
   GetTicketsMethod:
@@ -85,12 +125,15 @@ Resources:
       ResourceId: !Ref TicketsResource
       HttpMethod: GET
       AuthorizationType: NONE
+      RequestValidatorId: !Ref GetParamsValidator
+      RequestParameters:
+        method.request.querystring.limit: true
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetTicketFunction.Arn}/invocations
       MethodResponses:
-        - StatusCode: 200
+        - StatusCode: "200"
 
   PostTicketsMethod:
     Type: AWS::ApiGateway::Method
@@ -99,6 +142,7 @@ Resources:
       ResourceId: !Ref TicketsResource
       HttpMethod: POST
       AuthorizationType: NONE
+      ApiKeyRequired: true
       RequestModels:
         application/json: !Ref TicketModel
       RequestValidatorId: !Ref BodyValidator
@@ -107,9 +151,9 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateTicketFunction.Arn}/invocations
       MethodResponses:
-        - StatusCode: 201
+        - StatusCode: "201"
 
-  # === OPTIONS (CORS preflight) ===
+  # OPTIONS (CORS preflight)
   OptionsTicketsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -122,15 +166,15 @@ Resources:
         RequestTemplates:
           application/json: '{"statusCode": 200}'
         IntegrationResponses:
-          - StatusCode: 200
+          - StatusCode: "200"
             ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,x-api-key'"
               method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
               method.response.header.Access-Control-Allow-Origin: "'*'"
             ResponseTemplates:
               application/json: ''
       MethodResponses:
-        - StatusCode: 200
+        - StatusCode: "200"
           ResponseParameters:
             method.response.header.Access-Control-Allow-Headers: true
             method.response.header.Access-Control-Allow-Methods: true
@@ -145,7 +189,7 @@ Resources:
       - OptionsTicketsMethod
     Properties:
       RestApiId: !Ref TicketsApi
-      Description: A2 initial deployment
+      Description: A3 initial deployment
 
   ApiStage:
     Type: AWS::ApiGateway::Stage
@@ -153,6 +197,15 @@ Resources:
       RestApiId: !Ref TicketsApi
       StageName: !Ref StageName
       DeploymentId: !Ref ApiDeployment
+      MethodSettings:
+        - ResourcePath: "/tickets"
+          HttpMethod: "GET"
+          ThrottlingBurstLimit: 10
+          ThrottlingRateLimit: 5
+        - ResourcePath: "/tickets"
+          HttpMethod: "POST"
+          ThrottlingBurstLimit: 5
+          ThrottlingRateLimit: 2
 
   # Permissions (APIGW -> Lambda)
   AllowApiToInvokeGet:
@@ -171,7 +224,46 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TicketsApi}/*/POST/tickets
 
+  # API key + usage plan
+  DevApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn: ApiStage
+    Properties:
+      Name: !Sub ${ApiName}-dev-key
+      Enabled: true
+      Value: !Ref ApiKeyValue
+      StageKeys:
+        - RestApiId: !Ref TicketsApi
+          StageName: !Ref StageName
+
+  DevUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: !Sub ${ApiName}-dev-plan
+      ApiStages:
+        - ApiId: !Ref TicketsApi
+          Stage: !Ref ApiStage
+      Throttle:
+        RateLimit: 2
+        BurstLimit: 5
+      Quota:
+        Limit: 1000
+        Period: MONTH
+
+  DevUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref DevApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref DevUsagePlan
+
 Outputs:
   TicketsInvokeUrl:
     Description: Invoke URL for /tickets
     Value: !Sub https://${TicketsApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/tickets
+  RestApiId:
+    Description: API Gateway REST API Id (for OpenAPI export)
+    Value: !Ref TicketsApi
+  DevApiKeyValue:
+    Description: API key value for x-api-key header (dev)
+    Value: !Ref ApiKeyValue
