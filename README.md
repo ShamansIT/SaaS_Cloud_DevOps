@@ -162,8 +162,7 @@ aws cloudformation deploy `
 ```
 <details><summary>Screenshot – deploy stack</summary> <img src="https://github.com/ShamansIT/SaaS_Cloud_DevOps/blob/main/docs/screenshots/phase%2002%20screen15%20-%20package_deploy.jpg?raw=true" width="900" alt="deploy ok"> </details>
 
-### Get Invoke URL:
-
+#### Get Invoke URL:
 ```powershell
 $env:TICKETS_URL = (aws cloudformation describe-stacks --stack-name tickets-api-a2 `
   --query "Stacks[0].Outputs[?OutputKey=='TicketsInvokeUrl'].OutputValue" --output text)
@@ -223,5 +222,107 @@ This prevents false event warnings and enables IntelliSense for AWS types.
     "lib": ["ES2022"],
     "types": ["node", "aws-lambda"] } }
 ```
-### #Outcome
+### Outcome
 After restarting the TypeScript server, all module and type reconfigured, no warnings in environment. The project now matches a production-grade Node.js Lambda structure, according with best practices for AWS.
+
+## Phase 03: Raise the level - hardening `/tickets`
+ **Intent** - raise the minimum REST from the previous phase to the production-baseline: input validation (GET/POST), correct CORS, access control via API Key + Usage Plan, minimum IAM rights, observability (AWS Lambda Powertools + X-Ray), managed log retention, throttling on API Gateway, contract in the form of OpenAPI.
+
+**What added compared to Phase 02**
+- **Validation:** `GET /tickets` - mandatory `?limit=` through `RequestValidator` + `RequestParameters`; `POST /tickets` - model `Ticket` with `title` as required і `priority`as {LOW, MEDIUM, HIGH}.
+- **CORS:** `OPTIONS` on the resource + consistent headers in Lambda responses (including `x-api-key`).
+- **Security:** least-privilege ролі Lambda (`AWSLambdaBasicExecutionRole`, `AWSXRayDaemonWriteAccess`), `ApiKey + UsagePlan` (key is required for `POST`).
+- **Observability:** `@aws-lambda-powertools/logger` and `metrics` in both function; `Tracing: Active` (X-Ray).
+- **Performance/Scale:** memory tuning (`get:128MB/5s`, `post:256MB/6s`), throttling on Stage (rate/burst).
+- **Ergonomics:** export **OpenAPI (OAS 3.0)** with API Gateway.
+
+**Modified files**
+- `infrastructure/cloudformation/template.yaml` - Validators/Model, CORS, API Key+Usage Plan, throttling, Log Retention, Tracing.
+- `src/handlers/getTicket/index.js` - Powertools, reading `limit`, metrics `TicketsListed`, CORS-headings.
+- `src/handlers/createTicket/index.js` - Powertools, validation in code, metrics `TicketCreated`, CORS-headings.
+---
+
+```powershell
+aws cloudformation package `
+  --template-file infrastructure/cloudformation/template.yaml `
+  --s3-bucket serhii-saas-devops-artifacts-eu-west-1 `
+  --output-template-file aws-cloudformation/packaged.yaml
+```
+<details><summary>Screenshot - package</summary> <img src="https://github.com/ShamansIT/SaaS_Cloud_DevOps/blob/feature/phase3-hardening/docs/screenshots/phase%2003%20screen21%20-%20package_ok.jpg?raw=true" width="900" alt="package ok"> </details>
+
+####
+
+```powershell
+aws cloudformation deploy `
+  --template-file aws-cloudformation/packaged.yaml `
+  --stack-name tickets-a3 `
+  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM `
+  --parameter-overrides ApiName=tickets-api StageName=v1 ApiKeyValue=dev-key-a3-001-1550da9fdf67 `
+  --s3-bucket serhii-saas-devops-artifacts-eu-west-1
+```
+<details><summary>Screenshot - deploy ok</summary> <img src="https://github.com/ShamansIT/SaaS_Cloud_DevOps/blob/feature/phase3-hardening/docs/screenshots/phase%2003%20screen22%20-%20deploy_ok.jpg?raw=true" width="900" alt="deploy ok"> </details>
+
+After deploying, check the **Outputs** of the stack:
+
+```powershell
+aws cloudformation describe-stacks --stack-name tickets-a3 --query "Stacks[0].Outputs" --output table
+```
+<details><summary>Screenshot - check outputs</summary> <img src="https://github.com/ShamansIT/SaaS_Cloud_DevOps/blob/feature/phase3-hardening/docs/screenshots/phase%2003%20screen22%20-%20check_outputs.jpg?raw=true" width="900" alt="check outputs"> </details>
+
+## Test
+#### GET /tickets - 200 OK
+```powershell
+Invoke-RestMethod -Uri ($env:TICKETS_URL + "?limit=2") -Method GET
+```
+<details><summary>Screenshot - GET 200 (limit)</summary> <img src="https://github.com/ShamansIT/SaaS_Cloud_DevOps/blob/feature/phase3-hardening/docs/screenshots/phase%2003%20screen24%20-%20GET_200_limit.jpg?raw=true" width="900" alt="GET 200 limit"> </details>
+
+#### GET /tickets - 400 Bad Request (missing limit)
+```powershell
+curl.exe $env:TICKETS_URL
+```
+<details><summary>Screenshot - GET 400 (no limit)</summary> <img src="https://github.com/ShamansIT/SaaS_Cloud_DevOps/blob/feature/phase3-hardening/docs/screenshots/phase%2003%20screen25%20-%20GET_400_no_limit.jpg?raw=true" width="900" alt="GET 400 no limit"> </details>
+
+#### POST /tickets - 201 Created
+```powershell
+$body = @{ title = "A3 ticket"; priority = "MEDIUM" } | ConvertTo-Json
+Invoke-RestMethod -Uri $env:TICKETS_URL -Method POST `
+  -Headers @{ "x-api-key" = $env:API_KEY; "Content-Type" = "application/json" } `
+  -Body $body
+```
+<details><summary>Screenshot - POST 201</summary> <img src="https://github.com/ShamansIT/SaaS_Cloud_DevOps/blob/feature/phase3-hardening/docs/screenshots/phase%2003%20screen26%20-%20POST_201_with_key.jpg?raw=true" width="900" alt="POST 201"> </details>
+
+#### POST /tickets - 400 Bad Request
+```powershell
+$body = @{ title = ""; priority = "LOW" } | ConvertTo-Json
+Invoke-RestMethod -Uri $TICKETS_URL -Method POST `
+  -Headers @{ "x-api-key" = $API_KEY; "Content-Type" = "application/json" } `
+  -Body $body
+```
+<details><summary>Screenshot - POST 400 (invalid body)</summary> <img src="https://github.com/ShamansIT/SaaS_Cloud_DevOps/blob/feature/phase3-hardening/docs/screenshots/phase%2003%20screen27%20-%20POST_400_invalid_body.jpg?raw=true" width="900" alt="POST 400 invalid body"> </details>
+
+#### OPTIONS /tickets - CORS preflight
+```powershell
+curl.exe -i -X OPTIONS $env:TICKETS_URL
+```
+<details><summary>Screenshot - OPTIONS CORS</summary> <img src="https://github.com/ShamansIT/SaaS_Cloud_DevOps/blob/feature/phase3-hardening/docs/screenshots/phase%2003%20screen28%20-%20options_cors.jpg?raw=true" width="900" alt="OPTIONS CORS"> </details>
+
+#### OpenAPI (OAS 3.0) export
+```powershell
+mkdir docs\openapi -Force | Out-Null
+aws apigateway get-export `
+  --rest-api-id $env:REST_ID `
+  --stage-name v1 `
+  --export-type oas30 `
+  --parameters extensions=integrations `
+  --accept application/json docs/openapi/tickets-oas30-v1.json
+```
+<details><summary>Screenshot - OpenAPI export</summary> <img src="https://github.com/ShamansIT/SaaS_Cloud_DevOps/blob/feature/phase3-hardening/docs/screenshots/phase%2003%20screen29%20-%20openapi_export.jpg?raw=true" width="900" alt="openapi export"> </details>
+
+#### Clean-up
+```powershell
+aws cloudformation delete-stack --stack-name tickets-a3
+aws cloudformation wait stack-delete-complete --stack-name tickets-a3
+```
+<details><summary>Screenshot - delete stack</summary> <img src="https://github.com/ShamansIT/SaaS_Cloud_DevOps/blob/feature/phase3-hardening/docs/screenshots/phase%2003%20screen30%20-%20delete_stack_ok.jpg?raw=true" width="900" alt="delete stack ok"> </details>
+
+
