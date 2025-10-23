@@ -267,7 +267,7 @@ After deploying, check the **Outputs** of the stack:
 ```powershell
 aws cloudformation describe-stacks --stack-name tickets-a3 --query "Stacks[0].Outputs" --output table
 ```
-<details><summary>Screenshot - check outputs</summary> <img src="https://github.com/ShamansIT/SaaS_Cloud_DevOps/blob/feature/phase3-hardening/docs/screenshots/phase%2003%20screen22%20-%20check_outputs.jpg?raw=true" width="900" alt="check outputs"> </details>
+<details><summary>Screenshot - check outputs</summary> <img src="https://github.com/ShamansIT/SaaS_Cloud_DevOps/blob/feature/phase3-hardening/docs/screenshots/phase%2003%20screen23%20-%20check_outputs.jpg?raw=true" width="900" alt="check outputs"> </details>
 
 ## Test
 #### GET /tickets - 200 OK
